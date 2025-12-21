@@ -1,0 +1,8 @@
+{
+  "name": "Gemini Pro Chat",
+  "description": "A sophisticated AI-powered chatbot interface leveraging Gemini models for intelligent, real-time conversations with streaming support, image analysis, and live voice interactions.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
