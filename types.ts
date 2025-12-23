@@ -23,6 +23,7 @@ export interface Message {
   attachments?: Attachment[];
   groundingSources?: GroundingSource[];
   isThinking?: boolean;
+  feedback?: 'positive' | 'negative' | null;
 }
 
 export interface Conversation {

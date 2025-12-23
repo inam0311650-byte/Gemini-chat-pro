@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Conversation, Role, ChatMode, Attachment } from '../types';
-import { Send, Menu, Bot, User, Sparkles, Paperclip, Mic, X, Volume2, Globe, Brain, Zap, ExternalLink } from 'lucide-react';
+import { Send, Menu, Bot, User, Sparkles, Paperclip, Mic, X, Volume2, Globe, Brain, Zap, ExternalLink, ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { geminiService } from '../services/geminiService';
 
@@ -14,6 +14,7 @@ interface ChatWindowProps {
   mode: ChatMode;
   setMode: (mode: ChatMode) => void;
   onOpenLive: () => void;
+  onFeedback: (messageId: string, feedback: 'positive' | 'negative' | null) => void;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({ 
@@ -23,13 +24,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   toggleSidebar,
   mode,
   setMode,
-  onOpenLive
+  onOpenLive,
+  onFeedback
 }) => {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [readingMessageId, setReadingMessageId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const activeSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -62,19 +66,46 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  const playTTS = async (text: string) => {
+  const playTTS = async (messageId: string, text: string) => {
     try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // If already reading this message, do nothing
+      if (readingMessageId === messageId) return;
+
+      // Stop any existing playback
+      if (activeSourceRef.current) {
+        activeSourceRef.current.stop();
+        activeSourceRef.current = null;
       }
+
+      setReadingMessageId(messageId);
+
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+
       const audioData = await geminiService.generateSpeech(text);
       const buffer = await geminiService.decodeAudioData(audioData, audioContextRef.current);
+      
       const source = audioContextRef.current.createBufferSource();
       source.buffer = buffer;
       source.connect(audioContextRef.current.destination);
+      
+      source.onended = () => {
+        if (readingMessageId === messageId) {
+          setReadingMessageId(null);
+        }
+        activeSourceRef.current = null;
+      };
+
+      activeSourceRef.current = source;
       source.start();
     } catch (err) {
       console.error("TTS Error:", err);
+      setReadingMessageId(null);
     }
   };
 
@@ -144,7 +175,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             {conversation.messages.map((message) => (
               <div 
                 key={message.id} 
-                className={`flex w-full mb-6 ${message.role === Role.USER ? 'justify-end' : 'justify-start'}`}
+                className={`flex w-full mb-8 ${message.role === Role.USER ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`
                   group relative max-w-[85%] px-5 py-4 rounded-2xl border-2 transition-all duration-300
@@ -188,16 +219,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                   )}
 
-                  {/* Action Buttons */}
+                  {/* Action Buttons & Feedback */}
                   {message.role === Role.MODEL && (
-                    <div className="absolute -bottom-10 left-0 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                    <div className="absolute -bottom-10 left-0 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300">
                       <button 
-                        onClick={() => playTTS(message.content)} 
-                        className="p-1.5 text-gray-400 hover:text-white bg-white/5 hover:bg-blue-600/20 rounded-lg transition-all" 
+                        onClick={() => playTTS(message.id, message.content)} 
+                        className={`p-1.5 rounded-lg transition-all ${readingMessageId === message.id ? 'text-blue-400 bg-blue-400/10' : 'text-gray-400 hover:text-white bg-white/5 hover:bg-blue-600/20'}`} 
                         title="Read Aloud"
                       >
-                        <Volume2 size={15} />
+                        {readingMessageId === message.id ? <Loader2 size={15} className="animate-spin" /> : <Volume2 size={15} />}
                       </button>
+                      <div className="flex items-center gap-1 bg-white/5 rounded-lg p-0.5 border border-white/5">
+                        <button 
+                          onClick={() => onFeedback(message.id, message.feedback === 'positive' ? null : 'positive')}
+                          className={`p-1.5 rounded-md transition-all ${message.feedback === 'positive' ? 'text-blue-400 bg-blue-400/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+                        >
+                          <ThumbsUp size={14} fill={message.feedback === 'positive' ? "currentColor" : "none"} />
+                        </button>
+                        <button 
+                          onClick={() => onFeedback(message.id, message.feedback === 'negative' ? null : 'negative')}
+                          className={`p-1.5 rounded-md transition-all ${message.feedback === 'negative' ? 'text-red-400 bg-red-400/10' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+                        >
+                          <ThumbsDown size={14} fill={message.feedback === 'negative' ? "currentColor" : "none"} />
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -217,8 +262,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
       </div>
 
-      {/* Input Box */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 pb-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+      {/* Input Box - Absolute Bottom Layout */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 pb-1 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-20">
         <div className="max-w-3xl mx-auto">
           {attachments.length > 0 && (
             <div className="flex gap-2 p-3 bg-white/10 backdrop-blur-xl rounded-t-3xl border-x border-t border-white/10">
@@ -265,7 +310,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <Send size={22} />
             </button>
           </form>
-          <p className="text-[10px] text-white/40 text-center mt-4 font-bold tracking-widest uppercase">
+          <p className="text-[9px] text-white/30 text-center mt-1.5 font-bold tracking-[0.2em] uppercase">
             Gemini may hallucinate. verify important info.
           </p>
         </div>

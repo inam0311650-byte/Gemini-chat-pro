@@ -17,8 +17,13 @@ const App: React.FC = () => {
     return localStorage.getItem('isAuthenticated') === 'true';
   });
 
+  const [user, setUser] = useState<{ name: string; email: string } | null>(() => {
+    const saved = localStorage.getItem('user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [mode, setMode] = useState<ChatMode>('fast');
   const [isLiveOpen, setIsLiveOpen] = useState(false);
@@ -27,14 +32,19 @@ const App: React.FC = () => {
     localStorage.setItem('conversations', JSON.stringify(conversations));
   }, [conversations]);
 
-  const handleLogin = () => {
+  const handleLogin = (userData: { name: string; email: string }) => {
+    setUser(userData);
+    localStorage.setItem('user', JSON.stringify(userData));
     setIsAuthenticated(true);
     localStorage.setItem('isAuthenticated', 'true');
+    setIsSidebarOpen(false);
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
+    setUser(null);
     localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('user');
     setActiveId(null);
   };
 
@@ -59,6 +69,18 @@ const App: React.FC = () => {
     }
   }, [activeId]);
 
+  const handleFeedback = (messageId: string, feedback: 'positive' | 'negative' | null) => {
+    if (!activeId) return;
+    setConversations(prev => prev.map(c => 
+      c.id === activeId 
+        ? {
+            ...c,
+            messages: c.messages.map(m => m.id === messageId ? { ...m, feedback } : m)
+          }
+        : c
+    ));
+  };
+
   const handleSendMessage = async (text: string, attachments?: Attachment[]) => {
     if ((!text.trim() && (!attachments || attachments.length === 0)) || isTyping) return;
 
@@ -67,7 +89,7 @@ const App: React.FC = () => {
       const newId = Date.now().toString();
       currentConversation = {
         id: newId,
-        title: text ? text.slice(0, 30) : 'New Image Chat',
+        title: text ? text.slice(0, 30) : 'New Chat',
         messages: [],
         createdAt: Date.now()
       };
@@ -83,9 +105,15 @@ const App: React.FC = () => {
       attachments
     };
 
+    const history = [...currentConversation.messages];
+
     setConversations(prev => prev.map(c => 
       c.id === currentConversation!.id 
-        ? { ...c, messages: [...c.messages, userMessage], title: c.messages.length === 0 ? (text || 'New Chat').slice(0, 30) : c.title } 
+        ? { 
+            ...c, 
+            messages: [...c.messages, userMessage], 
+            title: c.messages.length === 0 ? (text || 'New Chat').slice(0, 30) : c.title 
+          } 
         : c
     ));
 
@@ -109,7 +137,7 @@ const App: React.FC = () => {
     try {
       let accumulatedResponse = '';
       let groundingSources: any[] = [];
-      const stream = geminiService.streamChat(currentConversation!.messages, text, mode, attachments);
+      const stream = geminiService.streamChat(history, text, mode, attachments);
       
       for await (const chunk of stream) {
         accumulatedResponse += chunk.text || '';
@@ -130,12 +158,16 @@ const App: React.FC = () => {
             : c
         ));
       }
-    } catch (error) {
+    } catch (error: any) {
+      const errorMsg = error.message?.includes("404") 
+        ? "Requested model was not found. Please try 'Fast' mode or check your configuration." 
+        : "Something went wrong. Please check your connection.";
+        
       setConversations(prev => prev.map(c => 
         c.id === currentConversation!.id 
           ? {
               ...c,
-              messages: c.messages.map(m => m.id === botMessageId ? { ...m, content: "Error communicating with Gemini." } : m)
+              messages: c.messages.map(m => m.id === botMessageId ? { ...m, content: `⚠️ ${errorMsg}` } : m)
             }
           : c
       ));
@@ -145,20 +177,18 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-full text-gray-900 overflow-hidden font-sans relative">
-      {/* Background Video */}
+    <div className="flex h-screen w-full text-white overflow-hidden font-sans relative">
       <video
         autoPlay
         muted
         loop
         playsInline
-        className="fixed top-0 left-0 w-full h-full object-cover -z-20 pointer-events-none brightness-75"
+        className="fixed top-0 left-0 w-full h-full object-cover -z-20 pointer-events-none brightness-[0.6] saturate-[0.8]"
       >
         <source src="input_file_1.mp4" type="video/mp4" />
       </video>
 
-      {/* Dark Gradient Overlay for readability */}
-      <div className="fixed top-0 left-0 w-full h-full bg-black/30 -z-10 pointer-events-none" />
+      <div className="fixed top-0 left-0 w-full h-full bg-black/40 -z-10 pointer-events-none" />
 
       {!isAuthenticated ? (
         <LandingPage onLogin={handleLogin} />
@@ -173,9 +203,10 @@ const App: React.FC = () => {
             isOpen={isSidebarOpen}
             setIsOpen={setIsSidebarOpen}
             onLogout={handleLogout}
+            user={user}
           />
           
-          <main className="flex-1 flex flex-col min-w-0 bg-transparent">
+          <main className="flex-1 flex flex-col min-w-0 bg-transparent relative">
             <ChatWindow 
               conversation={activeConversation} 
               onSendMessage={handleSendMessage} 
@@ -185,6 +216,7 @@ const App: React.FC = () => {
               mode={mode}
               setMode={setMode}
               onOpenLive={() => setIsLiveOpen(true)}
+              onFeedback={handleFeedback}
             />
           </main>
 

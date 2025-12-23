@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Conversation } from '../types';
-import { MessageSquare, Plus, Trash2, Menu, X, LogOut } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, LogOut } from 'lucide-react';
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -12,6 +12,7 @@ interface SidebarProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   onLogout: () => void;
+  user: { name: string; email: string } | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -22,7 +23,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteChat,
   isOpen,
   setIsOpen,
-  onLogout
+  onLogout,
+  user
 }) => {
   return (
     <>
@@ -35,40 +37,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside className={`
-        fixed inset-y-0 left-0 z-50 w-72 bg-black/60 backdrop-blur-xl text-white flex flex-col transition-transform duration-300 ease-in-out border-r border-white/10
+        fixed inset-y-0 left-0 z-50 w-72 bg-black/70 backdrop-blur-2xl text-white flex flex-col transition-transform duration-300 ease-in-out border-r border-white/10
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         md:relative md:translate-x-0 md:flex-shrink-0
       `}>
         <div className="p-4 flex flex-col h-full">
           <button 
             onClick={onNewChat}
-            className="flex items-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 border border-white/20 rounded-xl transition-all mb-6 font-medium text-sm"
+            className="flex items-center gap-2 px-4 py-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded-xl transition-all mb-6 font-semibold text-sm text-blue-400"
           >
             <Plus size={18} />
             New Chat
           </button>
 
           <div className="flex-1 overflow-y-auto space-y-1 -mx-2 px-2">
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-2 mb-2">History</div>
+            <div className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] px-2 mb-3">Recent Activity</div>
             {conversations.length === 0 ? (
-              <div className="px-4 py-8 text-center text-gray-500 text-sm italic">
-                No history yet
+              <div className="px-4 py-12 text-center text-white/20 text-xs font-medium">
+                Your conversations will appear here
               </div>
             ) : (
               conversations.map(conv => (
                 <div 
                   key={conv.id}
                   className={`
-                    group flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all relative mb-1
-                    ${activeId === conv.id ? 'bg-white/15 text-white shadow-sm ring-1 ring-white/20' : 'text-gray-400 hover:bg-white/5 hover:text-white'}
+                    group flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all relative mb-1
+                    ${activeId === conv.id ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10' : 'text-gray-400 hover:bg-white/5 hover:text-white'}
                   `}
                   onClick={() => {
                     onSelect(conv.id);
                     if (window.innerWidth < 768) setIsOpen(false);
                   }}
                 >
-                  <MessageSquare size={16} className="shrink-0" />
-                  <span className="truncate text-sm flex-1">{conv.title}</span>
+                  <MessageSquare size={16} className="shrink-0 text-blue-500/50" />
+                  <span className="truncate text-sm flex-1 font-medium">{conv.title}</span>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -83,23 +85,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          <div className="mt-auto pt-4 border-t border-white/10 flex items-center justify-between">
-            <div className="flex items-center gap-3 px-2 py-1 flex-1 min-w-0">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-xs font-bold border border-white/10 shadow-lg shrink-0">
-                U
+          <div className="mt-auto pt-4 space-y-2">
+            <div className="flex items-center justify-between border-t border-white/10 pt-4">
+              <div className="flex items-center gap-3 px-2 py-1 flex-1 min-w-0">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-xs font-bold border border-white/20 shadow-lg shrink-0">
+                  {user?.name?.charAt(0) || 'G'}
+                </div>
+                <div className="flex-1 truncate">
+                  <p className="text-sm font-semibold tracking-tight truncate">{user?.name || 'Guest User'}</p>
+                  <p className="text-[10px] text-white/40 truncate">{user?.email || 'Not signed in'}</p>
+                </div>
               </div>
-              <div className="flex-1 truncate">
-                <p className="text-sm font-semibold tracking-tight">Guest User</p>
-                <p className="text-[10px] text-gray-400 font-medium">Free Tier</p>
+              
+              <div className="flex items-center gap-1">
+                <button 
+                  onClick={onLogout}
+                  className="p-2 text-gray-400 hover:text-red-400 transition-colors hover:bg-white/5 rounded-lg shrink-0"
+                  title="Sign Out"
+                >
+                  <LogOut size={18} />
+                </button>
               </div>
             </div>
-            <button 
-              onClick={onLogout}
-              className="p-2 text-gray-400 hover:text-red-400 transition-colors hover:bg-white/5 rounded-lg shrink-0"
-              title="Sign Out"
-            >
-              <LogOut size={18} />
-            </button>
           </div>
         </div>
       </aside>

@@ -4,22 +4,46 @@ import { Role, Message, ChatMode, Attachment } from "../types";
 
 export class GeminiService {
   private getAI() {
-    // Strictly use process.env.API_KEY directly for initialization.
     return new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
   async *streamChat(history: Message[], newMessage: string, mode: ChatMode, attachments?: Attachment[]) {
     const ai = this.getAI();
-    let model = 'gemini-flash-lite-latest'; // Correct model name from guidelines
+    let model = 'gemini-3-flash-preview'; 
     let config: any = {};
 
-    if (attachments && attachments.length > 0) {
-      model = 'gemini-3-pro-preview'; // Image understanding
+    // Map history to SDK format
+    const contents: any[] = history.map(msg => ({
+      role: msg.role === Role.USER ? 'user' : 'model',
+      parts: [
+        { text: msg.content },
+        ...(msg.attachments?.map(att => ({
+          inlineData: {
+            data: att.data.split(',')[1] || att.data,
+            mimeType: att.mimeType
+          }
+        })) || [])
+      ]
+    }));
+
+    // Add current message
+    const currentParts: any[] = [{ text: newMessage }];
+    if (attachments) {
+      attachments.forEach(att => {
+        currentParts.push({
+          inlineData: {
+            data: att.data.split(',')[1] || att.data,
+            mimeType: att.mimeType
+          }
+        });
+      });
+      // Force Pro model for image understanding
+      model = 'gemini-3-pro-preview';
     } else {
       switch (mode) {
         case 'reasoning':
           model = 'gemini-3-pro-preview';
-          config.thinkingConfig = { thinkingBudget: 32768 };
+          config.thinkingConfig = { thinkingBudget: 16000 }; 
           break;
         case 'search':
           model = 'gemini-3-flash-preview';
@@ -30,30 +54,20 @@ export class GeminiService {
           break;
         case 'fast':
         default:
-          model = 'gemini-flash-lite-latest';
+          model = 'gemini-3-flash-preview';
           break;
       }
     }
 
-    const parts: any[] = [{ text: newMessage }];
-    if (attachments) {
-      attachments.forEach(att => {
-        parts.push({
-          inlineData: {
-            data: att.data.split(',')[1] || att.data,
-            mimeType: att.mimeType
-          }
-        });
-      });
-    }
+    contents.push({ role: 'user', parts: currentParts });
 
     try {
       const responseStream = await ai.models.generateContentStream({
         model,
-        contents: { parts },
+        contents,
         config: {
           ...config,
-          systemInstruction: "You are a helpful AI assistant. Format your responses with Markdown.",
+          systemInstruction: "You are a world-class AI assistant. You provide concise, accurate, and helpful information. Use Markdown for all formatting.",
         },
       });
 
@@ -67,7 +81,7 @@ export class GeminiService {
 
         yield { text, grounding };
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gemini API Error:", error);
       throw error;
     }
@@ -108,7 +122,7 @@ export class GeminiService {
         speechConfig: {
           voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } },
         },
-        systemInstruction: 'You are a friendly and helpful conversational assistant.',
+        systemInstruction: 'You are a helpful conversational assistant.',
       },
     });
   }
@@ -123,7 +137,7 @@ export class GeminiService {
   }
 
   async decodeAudioData(data: Uint8Array, ctx: AudioContext): Promise<AudioBuffer> {
-    const dataInt16 = new Int16Array(data.buffer);
+    const dataInt16 = new Int16Array(data.buffer, data.byteOffset, data.byteLength / 2);
     const numChannels = 1;
     const sampleRate = 24000;
     const frameCount = dataInt16.length / numChannels;
